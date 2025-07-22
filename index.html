@@ -57,6 +57,48 @@
             opacity: 0.8;
         }
 
+        /* New styles for user input */
+        .user-input-area {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        @media (min-width: 768px) {
+            .user-input-area {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            text-align: left;
+        }
+        
+        .input-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--highlight-color);
+            opacity: 0.9;
+        }
+
+        .input-group input {
+            background-color: var(--bg-color);
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            color: var(--text-color);
+            padding: 12px;
+            font-size: 1em;
+            font-family: inherit;
+        }
+        
+        .input-group input#chinesePrefix {
+             font-family: "SimSun", "Microsoft YaHei", sans-serif;
+        }
+
+
         #generateBtn {
             background-image: linear-gradient(45deg, #e94560, #a13b50);
             color: white;
@@ -155,6 +197,18 @@
     <div class="container">
         <h1>Chinese <span>Gibberish</span> Generator</h1>
         <p class="subtitle">Creates a random phrase in Chinese, translates it, and lets you copy the result.</p>
+        
+        <!-- NEW USER INPUT SECTION -->
+        <div class="user-input-area">
+            <div class="input-group">
+                <label for="chinesePrefix">Start with Chinese (optional)</label>
+                <input type="text" id="chinesePrefix" placeholder="比如：我的猫...">
+            </div>
+            <div class="input-group">
+                <label for="englishPrefix">Start with English (optional)</label>
+                <input type="text" id="englishPrefix" placeholder="e.g., My cat...">
+            </div>
+        </div>
         
         <button id="generateBtn">✨ Generate a new masterpiece</button>
 
@@ -577,7 +631,13 @@
             const englishOutput = document.getElementById('englishOutput');
             const statusLabel = document.getElementById('statusLabel');
             const copyButtons = document.querySelectorAll('.copy-btn');
+            
+            // New input fields
+            const chinesePrefixInput = document.getElementById('chinesePrefix');
+            const englishPrefixInput = document.getElementById('englishPrefix');
 
+            // --- EVENT LISTENERS ---
+            
             generateBtn.addEventListener('click', generateAndTranslate);
 
             copyButtons.forEach(button => {
@@ -586,30 +646,30 @@
                     copyToClipboard(targetId);
                 });
             });
+            
+            // Logic to clear one input if the other is used
+            chinesePrefixInput.addEventListener('input', () => {
+                if (englishPrefixInput.value) englishPrefixInput.value = '';
+            });
 
-            function generateChineseText() {
+            englishPrefixInput.addEventListener('input', () => {
+                if (chinesePrefixInput.value) chinesePrefixInput.value = '';
+            });
+
+
+            // --- FUNCTIONS ---
+
+            function generateRandomChinesePart() {
                 const numItems = Math.floor(Math.random() * 5) + 5; // 5 to 9 items
-                let selectedItems = [];
                 // Shuffle the array and take the first N items for uniqueness
                 const shuffled = [...sentences].sort(() => 0.5 - Math.random());
-                selectedItems = shuffled.slice(0, numItems);
-
-                const baseString = selectedItems.join('');
-                
-                let finalString = baseString;
-                const roll = Math.random();
-                if (roll < 0.05) {
-                    finalString = "我是" + baseString; // "I am" prefix
-                } else if (roll < 0.10) {
-                    finalString = "我" + baseString; // "I" prefix
-                }
-                
-                return finalString;
+                const selectedItems = shuffled.slice(0, numItems);
+                return selectedItems.join('');
             }
-
-            async function translateText(text) {
-                // Using a free, public translation API to avoid dependency on Google Cloud keys
-                const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=zh-CN|en`;
+            
+            // Modified to accept a language pair parameter
+            async function translateText(text, langpair = 'zh-CN|en') {
+                const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langpair}`;
                 
                 try {
                     const response = await fetch(url);
@@ -618,6 +678,10 @@
                     }
                     const data = await response.json();
                     if (data.responseStatus !== 200) {
+                        // Sometimes the API returns a 200 status but an error in the body
+                        if (data.responseData.translatedText.includes('MYMEMORY WARNING')) {
+                             return "Translation quality may be low for this part.";
+                        }
                         throw new Error(`API error: ${data.responseDetails}`);
                     }
                     return data.responseData.translatedText;
@@ -631,15 +695,28 @@
                 // Disable the button during generation
                 generateBtn.disabled = true;
                 generateBtn.textContent = 'Thinking...';
+                
+                let baseChinesePrefix = '';
+                const chinesePrefix = chinesePrefixInput.value.trim();
+                const englishPrefix = englishPrefixInput.value.trim();
+
+                // Determine the starting prefix
+                if (englishPrefix) {
+                    statusLabel.textContent = 'Translating your English prefix to Chinese...';
+                    baseChinesePrefix = await translateText(englishPrefix, 'en|zh-CN');
+                } else if (chinesePrefix) {
+                    baseChinesePrefix = chinesePrefix;
+                }
 
                 statusLabel.textContent = 'Gathering wise Chinese words...';
                 
-                const chineseText = generateChineseText();
-                chineseOutput.value = chineseText;
+                const generatedPart = generateRandomChinesePart();
+                const finalChineseText = baseChinesePrefix + generatedPart;
+                chineseOutput.value = finalChineseText;
 
                 statusLabel.textContent = 'Translating the masterpiece...';
                 
-                const englishText = await translateText(chineseText);
+                const englishText = await translateText(finalChineseText); // Translates from Chinese to English by default
                 englishOutput.value = englishText;
 
                 statusLabel.textContent = 'Done! Feel free to copy and use. ✨';
